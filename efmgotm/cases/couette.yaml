@@ -1,0 +1,53 @@
+# Turbulent Couette flow: a 10 m deep channel, no rotation, no stratification,
+# driven by a constant stress at the surface (wind) over a rough bottom.
+# Settings not listed here take GOTM's defaults.
+version: 7
+title: couette flow
+location:
+   name: couette
+   latitude: 0.0
+   longitude: 0.0
+   depth: 10.0
+time:
+   start: 2005-01-01 00:00:00
+   stop: 2005-01-02 00:00:00
+   dt: 10.0
+grid:
+   nlev: 100
+temperature:
+   method: off
+salinity:
+   method: off
+surface:
+   fluxes:
+      method: off                      # prescribed fluxes
+      heat:
+         method: constant
+         constant_value: 0.0
+      tx:
+         method: constant
+         constant_value: 1.027         # surface stress [Pa]; u_* = sqrt(tx/rho0) = 0.0316 m/s
+      ty:
+         method: constant
+         constant_value: 0.0
+   roughness:
+      charnock: false
+      z0s_min: 0.003
+bottom:
+   h0b: 0.1                            # bottom roughness height [m]; z0 = 0.03 h0b
+turbulence:
+   turb_method: second_order           # k-epsilon with second-order stability functions
+   tke_method: tke
+   len_scale_method: dissipation
+   stab_method: constant
+   turb_param:
+      compute_kappa: true
+equation_of_state:
+   method: linear_custom
+   rho0: 1027.0
+output:
+   couette:
+      time_unit: hour
+      time_step: 1
+      variables:
+      - source: *

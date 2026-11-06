@@ -1,0 +1,112 @@
+# Estuarine circulation in a 15 m deep channel: an M2 tide (depth-averaged
+# velocity amplitude 0.5 m/s) on top of a river outflow (-0.02 m/s), with a
+# constant along-channel salinity gradient driving the internal pressure
+# gradient.  Salinity is advected and relaxed to 15 psu on the tidal period so
+# that it stays bounded.  Settings not listed take GOTM's defaults.
+version: 7
+title: estuarine circulation
+location:
+   name: estuary
+   latitude: 0.0
+   longitude: 0.0
+   depth: 15.0
+time:
+   start: 2005-01-01 00:00:00
+   stop: 2005-01-30 00:00:00
+   dt: 36.0
+grid:
+   nlev: 50
+temperature:
+   method: off
+salinity:
+   method: constant
+   constant_value: 15.0
+   relax:
+      tau: 44714.0
+      tau_s: 44714.0
+      tau_b: 44714.0
+surface:
+   fluxes:
+      method: off
+      heat:
+         method: constant
+         constant_value: 0.0
+      tx:
+         method: constant
+         constant_value: 0.0
+      ty:
+         method: constant
+         constant_value: 1.027e-2      # small cross-channel wind stress [Pa] against surface stratification
+   roughness:
+      charnock: false
+      z0s_min: 0.02
+bottom:
+   h0b: 0.05
+turbulence:
+   turb_method: second_order
+   tke_method: tke
+   len_scale_method: dissipation
+   stab_method: constant
+   turb_param:
+      length_lim: false
+      galp: 0.53
+      eps_min: 1.00000000E-14
+mimic_3d:
+   ext_pressure:
+      type: average_velocity           # the external pressure gradient is set by a prescribed depth-averaged velocity
+      dpdx:
+         method: tidal
+         constant_value: -0.02         # river outflow: mean depth-averaged velocity [m/s], negative = seaward
+         tidal:
+            amp_1: 0.5                 # M2 amplitude of the depth-averaged velocity [m/s]
+            phase_1: 0.0
+            amp_2: 0.0                 # S2 amplitude [m/s]
+            phase_2: 0.0
+      dpdy:
+         method: constant
+         constant_value: 0.0
+      period_1: 44714.0                # M2 period [s]
+      period_2: 43200.0                # S2 period [s]
+   int_pressure:
+      type: gradients
+      gradients:
+         dsdx:
+            method: constant
+            constant_value: -2.0e-4    # along-channel salinity gradient [psu/m], negative = fresher upstream... (see notebook)
+         dsdy:
+            method: constant
+            constant_value: 0.0
+      s_adv: true
+      t_adv: false
+   zeta:
+      method: constant                 # no surface-elevation variation
+      constant_value: 0.0
+equation_of_state:
+   method: linear_custom
+   rho0: 1027.0
+   linear:
+      T0: 10.0
+      S0: 35.0
+      alpha: 1.7e-4
+      beta: 7.7e-4                     # haline contraction [1/psu], as in the exercise sheet
+      cp: 3985.0
+output:
+   estuary:
+      time_unit: second
+      time_step: 360
+      variables:                       # a selection, to keep the file small; use '*' for everything
+      - source: u
+      - source: v
+      - source: salt
+      - source: rho_p
+      - source: buoy
+      - source: NN
+      - source: SS
+      - source: num
+      - source: nuh
+      - source: tke
+      - source: eps
+      - source: taub
+      - source: u_taub
+      - source: idpdx                  # internal (baroclinic) pressure gradient term
+      - source: h

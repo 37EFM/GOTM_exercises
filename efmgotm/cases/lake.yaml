@@ -1,0 +1,68 @@
+# Mixing in a 20 m deep lake: surface heat flux and/or wind stress acting on
+# an initially linearly stratified water column (temperature stratification,
+# constant salinity).  No rotation.  Settings not listed take GOTM's defaults.
+version: 7
+title: lake mixing
+location:
+   name: lake
+   latitude: 0.0
+   longitude: 0.0
+   depth: 20.0
+time:
+   start: 2005-01-01 00:00:00
+   stop: 2005-01-08 00:00:00
+   dt: 60.0
+grid:
+   nlev: 100
+temperature:
+   method: buoyancy                    # linear profile from the buoyancy frequency NN below
+   two_layer:
+      t_s: 20.0                        # surface temperature [Celsius] (GOTM takes it from here)
+   NN: 0.0                             # square of the buoyancy frequency [s^-2]; dT/dz = NN / (alpha g)
+salinity:
+   method: constant
+   constant_value: 20.0
+surface:
+   fluxes:
+      method: off                      # prescribed fluxes
+      heat:
+         method: constant
+         constant_value: -5.0          # surface heat flux [W/m^2]; negative = cooling
+      tx:
+         method: constant
+         constant_value: 0.0           # wind stress [Pa]
+      ty:
+         method: constant
+         constant_value: 0.0
+   swr:
+      method: constant
+      constant_value: 0.0
+   roughness:
+      charnock: false
+      z0s_min: 0.02
+bottom:
+   h0b: 0.05
+turbulence:
+   turb_method: first_order            # k-epsilon with constant stability functions
+   tke_method: tke
+   len_scale_method: dissipation
+   stab_method: constant
+   turb_param:
+      length_lim: false
+      galp: 0.53
+      eps_min: 1.00000000E-14
+equation_of_state:
+   method: linear_custom               # rho = rho0 [1 - alpha (T - T0) + beta (S - S0)]
+   rho0: 1000.0
+   linear:
+      T0: 10.0
+      S0: 35.0
+      alpha: 2.6e-4                    # thermal expansion [1/K], as in the exercise sheet
+      beta: 7.8e-4
+      cp: 4150.0                       # specific heat [J/kg/K], as in the exercise sheet
+output:
+   lake:
+      time_unit: hour
+      time_step: 1
+      variables:
+      - source: *

@@ -1,0 +1,23 @@
+[build-system]
+requires = ["setuptools>=64"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "efmgotm"
+version = "0.1.0"
+description = "Run and analyse GOTM water-column simulations for the course 37EFM at TU/e"
+readme = "README.md"
+requires-python = ">=3.10"
+license = {text = "MIT"}
+authors = [{name = "Matias Duran Matute"}]
+dependencies = ["numpy", "scipy", "matplotlib", "xarray", "netCDF4", "pyyaml"]
+
+[project.optional-dependencies]
+notebook = ["jupyterlab"]
+test = ["pytest"]
+
+[tool.setuptools]
+packages = ["efmgotm"]
+
+[tool.setuptools.package-data]
+efmgotm = ["cases/*.yaml"]

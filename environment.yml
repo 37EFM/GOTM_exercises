@@ -1,0 +1,19 @@
+# conda env create -f environment.yml
+# conda activate efmgotm
+name: efmgotm
+channels:
+  - conda-forge
+dependencies:
+  - python>=3.10
+  - gotm>=6.0            # the model itself, prebuilt for Windows, Linux and macOS
+  - numpy
+  - scipy
+  - matplotlib
+  - xarray
+  - netcdf4
+  - pyyaml
+  - jupyterlab
+  - pytest
+  - pip
+  - pip:
+      - -e .
