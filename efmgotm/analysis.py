@@ -49,10 +49,13 @@ def convective_depth_stratified(t, Q, N2, alpha=2.6e-4, rho0=1000.0, cp=4150.0, 
 
         h = sqrt(factor * alpha g |Q| t / (rho0 cp N^2)).
 
-    The exercise sheet gives ``factor = 6``.  A heat budget in which the
-    surface cooling erodes the linear stratification without overshoot
-    (the mixed layer takes the temperature of its base) gives ``factor = 2``;
-    try both.
+    ``factor = 6`` is the result of Cushman-Roisin (Environmental Fluid
+    Mechanics, Section 7.4), who assumes that the potential energy of the
+    water column is unchanged by the convection; the mixed layer is then
+    colder than the water at its base by one third of Gamma h, the "knee"
+    of Deardorff's experiments.  Pure encroachment, in which the mixed
+    layer simply takes the temperature of the water at its base, gives
+    ``factor = 2``.
     """
     return np.sqrt(factor * alpha * g * abs(Q) * np.asarray(t, float) / (rho0 * cp * N2))
 
