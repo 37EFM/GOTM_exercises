@@ -34,7 +34,9 @@ jupyter lab notebooks
 On Windows, run these in the *Anaconda Prompt* (or *Miniconda Prompt*).
 Creating the environment takes a few minutes the first time. To check
 that the model is found, run `gotm --version` in the activated
-environment.
+environment. Start JupyterLab from that environment: if the terminal
+prompt does not begin with `(efmgotm)`, the notebooks cannot find the
+package.
 
 ## How a run works
 
@@ -94,7 +96,14 @@ $\rho_0 = 1027$ kg/m$^3$. This is the `estuary` scenario of the GOTM
 distribution without its surface-elevation signal and S2 tide.
 
 The cases are the GOTM 5 namelist setups used in earlier years,
-translated to the GOTM 6 configuration format.
+translated to the GOTM 6 configuration format. They are written for the
+newest configuration format (version 7, GOTM built from source). The
+GOTM 6.0.x releases on conda-forge read version 6; `efmgotm.run` asks
+the executable which version it reads and translates the configuration
+when needed, so the same cases, settings keys and notebooks work with
+both. Turbulence constants whose defaults changed between the versions
+are set explicitly in the cases, to the values of the original setups,
+so that both versions give the same results.
 
 ## Repository layout
 

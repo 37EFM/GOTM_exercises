@@ -68,3 +68,20 @@ def test_lake_cooling_mixes(gotm_available, tmp_path):
     assert abs((T0[-1] - T0[0]) / 20.0 - 1e-4 / (2.6e-4 * 9.81)) < 2e-3   # dT/dz = NN/(alpha g)
     mld = analysis.mixed_layer_depth(ds, "temp", 0.01)
     assert float(mld[-1]) > float(mld[5]) > 0
+
+
+def test_to_version6_translation():
+    """The conda-forge GOTM 6.0.x reads configuration version 6."""
+    runmod = importlib.import_module("efmgotm.run")
+    c6 = runmod.to_version6(efmgotm.case_config("estuary"))
+    assert c6["version"] == 6
+    assert "equation_of_state" not in c6 and c6["eq_state"]["form"] == "linear_custom"
+    rho0, beta = 1027.0, 7.7e-4
+    assert c6["physical_constants"]["rho_0"] == rho0
+    assert np.isclose(c6["eq_state"]["linear"]["dsr0"], rho0 * beta)
+    ip = c6["mimic_3d"]["int_press"]
+    assert ip["dsdx"]["constant_value"] == -2.0e-4 and ip["s_adv"] is True
+    sources = [v["source"] for v in c6["output"]["estuary"]["variables"]]
+    assert "rho" in sources and "rho_p" not in sources and "idpdx" not in sources
+    # the original is untouched
+    assert "equation_of_state" in efmgotm.case_config("estuary")

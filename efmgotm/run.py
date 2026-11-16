@@ -72,6 +72,118 @@ def find_gotm():
         "or set the environment variable GOTM_EXE to the path of the executable.")
 
 
+_CONFIG_VERSIONS = {}
+
+
+def config_version(exe):
+    """Configuration version that a GOTM executable reads.
+
+    The GOTM 6.0.x releases on conda-forge read version 6; GOTM built from
+    the current source reads version 7, which is what the case files are
+    written in.  ``gotm --version`` reports it on its ``Config:`` line.
+    """
+    exe = str(exe)
+    if exe not in _CONFIG_VERSIONS:
+        try:
+            p = subprocess.run([exe, "--version"], capture_output=True, text=True, timeout=60)
+            out = p.stdout + p.stderr                   # conda builds print it on stderr
+        except (OSError, subprocess.SubprocessError):
+            out = ""
+        m = _re.search(r"Config:\s*(\d+)", out)
+        _CONFIG_VERSIONS[exe] = int(m.group(1)) if m else 7
+    return _CONFIG_VERSIONS[exe]
+
+
+# settings introduced after version 6; a version 6 executable rejects them
+_NEW_IN_VERSION7 = [
+    "grid.fixed_grid", "bottom.calc_bottom_stress", "physical_constants.rotation_period",
+    "temperature.type", "salinity.type", "surface.swr.type",
+    "surface.longwave_radiation.type", "surface.longwave_radiation.constant_value",
+]
+
+
+_OUTPUT_RENAMED_IN_VERSION7 = {"rho_p": "rho"}
+_OUTPUT_ONLY_IN_VERSION7 = {"idpdx", "idpdy", "nucl", "PSTK"}
+
+
+def to_version6(config):
+    """Translate a version 7 configuration into version 6, for GOTM 6.0.x.
+
+    This undoes what GOTM's ``update_setup.py`` does between the two:
+
+    - ``equation_of_state`` becomes ``eq_state``.  The reference density
+      ``rho0`` moves to ``physical_constants.rho_0`` and the specific heat
+      ``cp`` to ``physical_constants.cp``.  The dimensionless expansion
+      coefficients become coefficients in kg/m^3 per unit:
+      ``dtr0 = -rho0 alpha`` and ``dsr0 = rho0 beta``, so that
+      rho = rho0 [1 - alpha (T - T0) + beta (S - S0)] in both versions.
+    - ``mimic_3d.int_pressure.gradients.*`` becomes ``mimic_3d.int_press.*``.
+    - The output variable ``rho_p`` is called ``rho``; :func:`load` renames
+      it back.  ``idpdx`` and ``idpdy`` are not available and are dropped.
+
+    Version 7 also interprets temperature and salinity as TEOS-10
+    conservative temperature and absolute salinity, so the two versions
+    agree to a few per cent, not exactly.
+    """
+    c = copy.deepcopy(config)
+    c["version"] = 6
+
+    eos = c.pop("equation_of_state", None)
+    if eos is not None:
+        method = eos.get("method", "full_teos-10")
+        lin = dict(eos.get("linear") or {})
+        rho0 = float(eos.get("rho0", 1027.0))
+        old = {}
+        if method == "linear_custom":
+            old["form"] = "linear_custom"
+            linear = {k: lin[k] for k in ("T0", "S0", "p0") if k in lin}
+            linear["dtr0"] = -rho0 * float(lin.get("alpha", 2.0e-4))   # version 7 defaults
+            linear["dsr0"] = rho0 * float(lin.get("beta", 7.5e-4))
+            old["linear"] = linear
+        elif method == "linear_teos-10":
+            old["form"] = "linear"
+            old["linear"] = {k: lin[k] for k in ("T0", "S0", "p0") if k in lin}
+        else:
+            old["form"] = "full"
+        c["eq_state"] = old
+        constants = c.setdefault("physical_constants", {})
+        constants["rho_0"] = rho0
+        if "cp" in lin:
+            constants["cp"] = lin["cp"]
+
+    mimic = c.get("mimic_3d") or {}
+    ip = mimic.pop("int_pressure", None)
+    if ip is not None:
+        kind = ip.pop("type", "gradients")
+        if kind not in ("gradients", "none", None):
+            raise ValueError(f"mimic_3d.int_pressure.type = {kind} needs GOTM with configuration version 7")
+        ip.pop("plume", None)
+        old = dict(ip.pop("gradients", None) or {})
+        old.update(ip)                              # s_adv, t_adv
+        mimic["int_press"] = old
+
+    # output variables: rho_p is called rho in version 6; the others do not exist there
+    for category in (c.get("output") or {}).values():
+        variables = category.get("variables") if isinstance(category, dict) else None
+        if variables:
+            kept = []
+            for v in variables:
+                src = v.get("source")
+                if src in _OUTPUT_ONLY_IN_VERSION7:
+                    continue
+                kept.append({**v, "source": _OUTPUT_RENAMED_IN_VERSION7.get(src, src)})
+            category["variables"] = kept
+
+    for key in _NEW_IN_VERSION7:
+        *parents, last = key.split(".")
+        node = c
+        for k in parents:
+            node = node.get(k) if isinstance(node, dict) else None
+        if isinstance(node, dict):
+            node.pop(last, None)
+    return c
+
+
 def set_nested(config, key, value):
     """Set ``config['a']['b']['c'] = value`` from the dotted key ``'a.b.c'``."""
     parts = key.split(".")
@@ -179,8 +291,10 @@ def run(case, settings=None, name=None, workdir="runs", rerun=True, quiet=True,
     ncfile = rundir / f"{_output_name(config)}.nc"
     if not rerun and ncfile.exists():
         return load(ncfile)
-    (rundir / "gotm.yaml").write_text(dump_yaml(config) + "\n")
     exe = gotm or find_gotm()
+    if config.get("version", 7) == 7 and config_version(exe) == 6:
+        config = to_version6(config)               # GOTM 6.0.x, as on conda-forge
+    (rundir / "gotm.yaml").write_text(dump_yaml(config) + "\n")
     with open(rundir / "gotm.log", "w") as log:
         proc = subprocess.run([exe], cwd=rundir, stdout=log, stderr=subprocess.STDOUT)
     if proc.returncode != 0 or not ncfile.exists():
@@ -205,6 +319,8 @@ def load(ncfile):
     ``hours`` and ``days`` give the elapsed time.
     """
     ds = xr.open_dataset(ncfile).squeeze(drop=True)
+    if "rho" in ds and "rho_p" not in ds:          # GOTM 6.0.x names it rho
+        ds = ds.rename({"rho": "rho_p"})
     for c in ("z", "zi"):
         if c in ds.coords and "time" in ds[c].dims:
             first = ds[c].isel(time=0)

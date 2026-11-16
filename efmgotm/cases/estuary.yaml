@@ -47,7 +47,10 @@ turbulence:
    tke_method: tke
    len_scale_method: dissipation
    stab_method: constant
+   keps:
+      ce3plus: 1.0                     # as in the original GOTM 5 case and GOTM 6.0 (later versions default to 1.5)
    turb_param:
+      compute_kappa: true              # as in the original GOTM 5 case
       length_lim: false
       galp: 0.53
       eps_min: 1.00000000E-14
