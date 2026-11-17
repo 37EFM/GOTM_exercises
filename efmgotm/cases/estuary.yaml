@@ -2,8 +2,10 @@
 # velocity amplitude 0.5 m/s) on top of a river outflow (-0.02 m/s), with a
 # constant along-channel salinity gradient driving the internal pressure
 # gradient.  Salinity is advected and relaxed to 15 psu on the tidal period so
-# that it stays bounded.  Settings not listed take GOTM's defaults.
-version: 7
+# that it stays bounded.  Settings not listed take GOTM's defaults;
+# efmgotm.copy_case('estuary') writes a copy with every setting, its meaning
+# and its default.
+version: 6
 title: estuarine circulation
 location:
    name: estuary
@@ -48,7 +50,7 @@ turbulence:
    len_scale_method: dissipation
    stab_method: constant
    keps:
-      ce3plus: 1.0                     # as in the original GOTM 5 case and GOTM 6.0 (later versions default to 1.5)
+      ce3plus: 1.0                     # GOTM 6 default, as in the original GOTM 5 case; set here because GOTM 7 defaults to 1.5
    turb_param:
       compute_kappa: true              # as in the original GOTM 5 case
       length_lim: false
@@ -70,29 +72,28 @@ mimic_3d:
          constant_value: 0.0
       period_1: 44714.0                # M2 period [s]
       period_2: 43200.0                # S2 period [s]
-   int_pressure:
-      type: gradients
-      gradients:
-         dsdx:
-            method: constant
-            constant_value: -2.0e-4    # along-channel salinity gradient [psu/m], negative = fresher upstream... (see notebook)
-         dsdy:
-            method: constant
-            constant_value: 0.0
-      s_adv: true
+   int_press:                          # internal pressure gradient, from prescribed horizontal gradients
+      dsdx:
+         method: constant
+         constant_value: -2.0e-4       # along-channel salinity gradient [psu/m] (sign: see notebook)
+      dsdy:
+         method: constant
+         constant_value: 0.0
+      s_adv: true                      # advect salinity with this gradient
       t_adv: false
    zeta:
       method: constant                 # no surface-elevation variation
       constant_value: 0.0
-equation_of_state:
-   method: linear_custom
-   rho0: 1027.0
+physical_constants:
+   rho_0: 1027.0                       # reference density [kg/m^3]
+   cp: 3985.0                          # specific heat [J/kg/K]
+eq_state:
+   form: linear_custom                 # rho = rho_0 + dtr0 (T - T0) + dsr0 (S - S0)
    linear:
       T0: 10.0
       S0: 35.0
-      alpha: 1.7e-4
-      beta: 7.7e-4                     # haline contraction [1/psu], as in the exercise sheet
-      cp: 3985.0
+      dtr0: -0.17459                   # = -rho_0 alpha [kg/m^3/K], alpha = 1.7e-4 1/K
+      dsr0: 0.79079                    # = rho_0 beta [kg/m^3/psu], haline contraction beta = 7.7e-4 1/psu as in the exercise sheet
 output:
    estuary:
       time_unit: second
@@ -101,7 +102,7 @@ output:
       - source: u
       - source: v
       - source: salt
-      - source: rho_p
+      - source: rho
       - source: buoy
       - source: NN
       - source: SS
@@ -111,5 +112,4 @@ output:
       - source: eps
       - source: taub
       - source: u_taub
-      - source: idpdx                  # internal (baroclinic) pressure gradient term
       - source: h

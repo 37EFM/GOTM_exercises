@@ -18,9 +18,12 @@ Typical use::
 
 ``run`` writes a ``gotm.yaml`` in a run directory, calls the ``gotm``
 executable (installed with conda from conda-forge) and returns the
-output as an xarray Dataset with 1-D vertical coordinates.
+output as an xarray Dataset with 1-D vertical coordinates.  Next to it,
+``gotm_full.yaml`` lists every setting of GOTM with its meaning and
+default.  ``copy_case('lake')`` writes such a complete configuration to
+``my_lake.yaml``, to edit and run with ``run('my_lake.yaml')``.
 """
-from .run import run, load, find_gotm, case_config, available_cases, CASES
+from .run import run, load, copy_case, find_gotm, case_config, available_cases, CASES
 from . import analysis
 
 __version__ = "0.1.0"

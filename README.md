@@ -55,10 +55,28 @@ the run is in `gotm.log` next to the output.
 
 The base configurations are in `efmgotm/cases/*.yaml`, with comments.
 A key such as `surface.fluxes.heat.constant_value` is the path to a
-setting in that file. GOTM has many more settings than the ones listed
-there; `gotm --write_yaml full.yaml --detail full` in a terminal
-writes a configuration with every setting and its description, and
-any of them can be passed to `run` in the same way.
+setting in that file.
+
+## Every setting
+
+A case file lists only the settings the course case chooses; GOTM gives
+every other setting its default. Each run also leaves `gotm_full.yaml`
+in its run directory: the complete configuration of that run, written
+by GOTM itself, with every setting and, on each line, its meaning,
+units, allowed values and default. Any of these settings can be passed
+to `run` with its dotted key.
+
+To work with the whole file instead, as was done in this course before
+the notebooks, let `copy_case` write it to a file of your own, edit it,
+and run the file:
+
+```python
+efmgotm.copy_case('lake')            # writes my_lake.yaml; its header lists what the case sets
+ds = efmgotm.run('my_lake.yaml')     # after editing it
+```
+
+A settings dictionary still works on top of a file. Files named
+`my_*.yaml` are ignored by git, so `git pull` leaves them alone.
 
 The Dataset has the vertical coordinates `z` (layer centres, negative
 upward, 0 at the surface) and `zi` (layer interfaces, where turbulence
@@ -96,19 +114,20 @@ $\rho_0 = 1027$ kg/m$^3$. This is the `estuary` scenario of the GOTM
 distribution without its surface-elevation signal and S2 tide.
 
 The cases are the GOTM 5 namelist setups used in earlier years,
-translated to the GOTM 6 configuration format. They are written for the
-newest configuration format (version 7, GOTM built from source). The
-GOTM 6.0.x releases on conda-forge read version 6; `efmgotm.run` asks
-the executable which version it reads and translates the configuration
-when needed, so the same cases, settings keys and notebooks work with
-both. Turbulence constants whose defaults changed between the versions
-are set explicitly in the cases, to the values of the original setups,
-so that both versions give the same results.
+translated to the configuration format of GOTM 6.0 (version 6), which is
+what conda-forge provides. `environment.yml` pins `gotm=6.0`, so that
+everyone runs the same model. GOTM built from the current source reads
+configuration version 7, which renames a few settings (the equation of
+state, the internal pressure gradient); `efmgotm.run` asks the
+executable which version it reads and translates when needed. Two
+turbulence constants whose defaults change in GOTM 7 (`ce3plus`,
+`compute_kappa`) are set explicitly in the cases, to the values of the
+original setups, so that both versions give the same results.
 
 ## Repository layout
 
 ```
-efmgotm/run.py        run, load, case_config, find_gotm
+efmgotm/run.py        run, load, copy_case, case_config, find_gotm
 efmgotm/analysis.py   theory curves and diagnostics
 efmgotm/cases/        couette.yaml, lake.yaml, estuary.yaml
 notebooks/            one notebook per exercise (run directories appear in notebooks/runs/)

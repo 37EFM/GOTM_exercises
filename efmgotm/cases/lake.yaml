@@ -1,7 +1,9 @@
 # Mixing in a 20 m deep lake: surface heat flux and/or wind stress acting on
 # an initially linearly stratified water column (temperature stratification,
-# constant salinity).  No rotation.  Settings not listed take GOTM's defaults.
-version: 7
+# constant salinity).  No rotation.  Settings not listed take GOTM's defaults;
+# efmgotm.copy_case('lake') writes a copy with every setting, its meaning and
+# its default.
+version: 6
 title: lake mixing
 location:
    name: lake
@@ -48,21 +50,22 @@ turbulence:
    len_scale_method: dissipation
    stab_method: constant
    keps:
-      ce3plus: 1.0                     # as in the original GOTM 5 case and GOTM 6.0 (later versions default to 1.5)
+      ce3plus: 1.0                     # GOTM 6 default, as in the original GOTM 5 case; set here because GOTM 7 defaults to 1.5
    turb_param:
       compute_kappa: true              # as in the original GOTM 5 case
       length_lim: false
       galp: 0.53
       eps_min: 1.00000000E-14
-equation_of_state:
-   method: linear_custom               # rho = rho0 [1 - alpha (T - T0) + beta (S - S0)]
-   rho0: 1000.0
+physical_constants:
+   rho_0: 1000.0                       # reference density [kg/m^3], as in the exercise sheet
+   cp: 4150.0                          # specific heat [J/kg/K], as in the exercise sheet
+eq_state:
+   form: linear_custom                 # rho = rho_0 + dtr0 (T - T0) + dsr0 (S - S0)
    linear:
       T0: 10.0
       S0: 35.0
-      alpha: 2.6e-4                    # thermal expansion [1/K], as in the exercise sheet
-      beta: 7.8e-4
-      cp: 4150.0                       # specific heat [J/kg/K], as in the exercise sheet
+      dtr0: -0.26                      # = -rho_0 alpha [kg/m^3/K], thermal expansion alpha = 2.6e-4 1/K as in the exercise sheet
+      dsr0: 0.78                       # = rho_0 beta [kg/m^3/psu], beta = 7.8e-4 1/psu
 output:
    lake:
       time_unit: hour

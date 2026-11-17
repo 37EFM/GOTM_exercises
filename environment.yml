@@ -5,7 +5,8 @@ channels:
   - conda-forge
 dependencies:
   - python>=3.10
-  - gotm>=6.0            # the model itself, prebuilt for Windows, Linux and macOS
+  - gotm=6.0             # the model itself, prebuilt for Windows, Linux and macOS; pinned so that
+                         # everyone runs the same version (GOTM 7 changes default constants)
   - numpy
   - scipy
   - matplotlib

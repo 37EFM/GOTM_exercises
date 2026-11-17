@@ -5,6 +5,7 @@ import copy
 import os
 import shutil
 import subprocess
+import tempfile
 from importlib import resources
 from pathlib import Path
 
@@ -41,16 +42,33 @@ def load_yaml(text):
     A bare ``*`` (GOTM's wildcard for "all variables") is not valid YAML;
     it is quoted before parsing and written back bare by :func:`dump_yaml`.
     """
-    text = _re.sub(r"(:\s*)\*\s*$", r"\1'*'", text, flags=_re.M)
+    text = _re.sub(r"(:\s*)\*(\s*(#.*)?)$", r"\1'*'\2", text, flags=_re.M)
     return yaml.load(text, Loader=_Loader)
 
 
-def case_config(case):
-    """The base configuration of a case as a nested dict (from ``cases/<case>.yaml``)."""
+def _case_text(case):
     if case not in CASES:
-        raise ValueError(f"unknown case {case!r}; choose from {CASES}")
-    text = resources.files("efmgotm").joinpath(f"cases/{case}.yaml").read_text()
-    return load_yaml(text)
+        raise ValueError(f"unknown case {case!r}; choose from {CASES}, or give the path of a .yaml file")
+    return resources.files("efmgotm").joinpath(f"cases/{case}.yaml").read_text()
+
+
+def _is_file(case):
+    return isinstance(case, Path) or str(case).endswith((".yaml", ".yml"))
+
+
+def case_config(case):
+    """The base configuration of a case as a nested dict.
+
+    ``case`` is a course case (``'couette'``, ``'lake'``, ``'estuary'``, read
+    from ``efmgotm/cases/<case>.yaml``) or the path of a configuration file,
+    such as one written by :func:`copy_case`.
+    """
+    if _is_file(case):
+        path = Path(case)
+        if not path.exists():
+            raise FileNotFoundError(f"{path} not found (from {Path.cwd()})")
+        return load_yaml(path.read_text())
+    return load_yaml(_case_text(case))
 
 
 def find_gotm():
@@ -78,9 +96,10 @@ _CONFIG_VERSIONS = {}
 def config_version(exe):
     """Configuration version that a GOTM executable reads.
 
-    The GOTM 6.0.x releases on conda-forge read version 6; GOTM built from
-    the current source reads version 7, which is what the case files are
-    written in.  ``gotm --version`` reports it on its ``Config:`` line.
+    The GOTM 6.0.x releases on conda-forge, which the course uses and the
+    case files are written for, read version 6; GOTM built from the current
+    source reads version 7.  ``gotm --version`` reports it on its
+    ``Config:`` line.
     """
     exe = str(exe)
     if exe not in _CONFIG_VERSIONS:
@@ -90,7 +109,7 @@ def config_version(exe):
         except (OSError, subprocess.SubprocessError):
             out = ""
         m = _re.search(r"Config:\s*(\d+)", out)
-        _CONFIG_VERSIONS[exe] = int(m.group(1)) if m else 7
+        _CONFIG_VERSIONS[exe] = int(m.group(1)) if m else 6
     return _CONFIG_VERSIONS[exe]
 
 
@@ -118,8 +137,8 @@ def to_version6(config):
       ``dtr0 = -rho0 alpha`` and ``dsr0 = rho0 beta``, so that
       rho = rho0 [1 - alpha (T - T0) + beta (S - S0)] in both versions.
     - ``mimic_3d.int_pressure.gradients.*`` becomes ``mimic_3d.int_press.*``.
-    - The output variable ``rho_p`` is called ``rho``; :func:`load` renames
-      it back.  ``idpdx`` and ``idpdy`` are not available and are dropped.
+    - The output variable ``rho_p`` is called ``rho``, the name the course
+      uses.  ``idpdx`` and ``idpdy`` are not available and are dropped.
 
     Version 7 also interprets temperature and salinity as TEOS-10
     conservative temperature and absolute salinity, so the two versions
@@ -184,6 +203,68 @@ def to_version6(config):
     return c
 
 
+def to_version7(config):
+    """Translate a version 6 configuration into version 7, for GOTM built from source.
+
+    The inverse of :func:`to_version6`: ``eq_state`` becomes
+    ``equation_of_state`` with the dimensionless coefficients
+    ``alpha = -dtr0 / rho_0`` and ``beta = dsr0 / rho_0``, the reference
+    density and specific heat move into it from ``physical_constants``,
+    ``mimic_3d.int_press.*`` becomes ``mimic_3d.int_pressure.gradients.*``,
+    and the output variable ``rho`` is called ``rho_p``.
+    """
+    c = copy.deepcopy(config)
+    c["version"] = 7
+
+    constants = c.get("physical_constants") or {}
+    rho0 = float(constants.pop("rho_0", 1027.0))
+    cp = constants.pop("cp", None)
+    if "physical_constants" in c and not constants:
+        del c["physical_constants"]
+    eos = c.pop("eq_state", None) or {}
+    form = eos.get("form", "full")
+    lin = dict(eos.get("linear") or {})
+    new = {"rho0": rho0}
+    linear = {k: lin[k] for k in ("T0", "S0", "p0") if k in lin}
+    if form == "linear_custom":
+        new["method"] = "linear_custom"
+        linear["alpha"] = -float(lin.get("dtr0", -0.17)) / rho0     # version 6 defaults
+        linear["beta"] = float(lin.get("dsr0", 0.78)) / rho0
+    elif form == "linear":
+        new["method"] = "linear_teos-10"
+    else:
+        new["method"] = "full_teos-10"
+    if cp is not None:
+        linear["cp"] = cp
+    if linear:
+        new["linear"] = linear
+    c["equation_of_state"] = new
+
+    mimic = c.get("mimic_3d") or {}
+    ip = mimic.pop("int_press", None)
+    if ip is not None:
+        gradients = {k: ip.pop(k) for k in ("dtdx", "dtdy", "dsdx", "dsdy") if k in ip}
+        mimic["int_pressure"] = {"type": "gradients", "gradients": gradients, **ip}
+
+    renamed = {old: new for new, old in _OUTPUT_RENAMED_IN_VERSION7.items()}
+    for category in (c.get("output") or {}).values():
+        variables = category.get("variables") if isinstance(category, dict) else None
+        if variables:
+            category["variables"] = [{**v, "source": renamed.get(v.get("source"), v.get("source"))}
+                                     for v in variables]
+    return c
+
+
+def for_executable(config, exe):
+    """The configuration in the version that the executable ``exe`` reads."""
+    wanted, have = config_version(exe), config.get("version", 6)
+    if have == 7 and wanted == 6:
+        return to_version6(config)
+    if have == 6 and wanted == 7:
+        return to_version7(config)
+    return config
+
+
 def set_nested(config, key, value):
     """Set ``config['a']['b']['c'] = value`` from the dotted key ``'a.b.c'``."""
     parts = key.split(".")
@@ -246,20 +327,97 @@ def dump_yaml(config, indent=0):
     return "\n".join(l for l in lines if l != "")
 
 
+def _write_full(exe, rundir):
+    """Let GOTM write ``gotm_full.yaml``: every setting, with its meaning and default."""
+    try:
+        subprocess.run([exe, "--write_yaml", "gotm_full.yaml", "--detail", "full"], cwd=rundir,
+                       capture_output=True, timeout=120)
+    except (OSError, subprocess.SubprocessError):
+        pass
+    return Path(rundir) / "gotm_full.yaml"
+
+
+def _case_choices(case):
+    """The settings a course case chooses, as (dotted key, value, comment) from its file."""
+    rows, stack = [], []
+    for line in _case_text(case).splitlines():
+        m = _re.match(r"^( *)([A-Za-z0-9_]+):\s*([^#]*?)\s*(#\s*(.*))?$", line)
+        if not m:
+            continue
+        depth = len(m.group(1)) // 3
+        stack[depth:] = [m.group(2)]
+        if stack[0] in ("version", "title", "output") or not m.group(3):
+            continue
+        rows.append((".".join(stack), m.group(3), m.group(5) or ""))
+    return rows
+
+
+def copy_case(case, path=None, overwrite=False, gotm=None):
+    """Write a course case with every GOTM setting to a file you can edit and run.
+
+    GOTM writes the complete configuration: every setting it has, with the
+    values of the course case, and on each line a comment giving its
+    meaning, units, allowed values and default.  The header of the file
+    lists the settings that the course case chooses; everything else is
+    GOTM's default.  Edit the file (in JupyterLab, double-click it in the
+    file browser) and run it with ``efmgotm.run('my_lake.yaml')``.
+
+    Parameters
+    ----------
+    case : 'couette', 'lake' or 'estuary'
+    path : str or Path
+        Where to write it; default ``my_<case>.yaml`` in the current directory.
+    overwrite : bool
+        Replace an existing file (your edits in it are lost).
+
+    Returns
+    -------
+    Path of the file.
+    """
+    path = Path(path or f"my_{case}.yaml")
+    if path.exists() and not overwrite:
+        raise FileExistsError(f"{path} exists already; pick another name or pass overwrite=True")
+    exe = gotm or find_gotm()
+    config = for_executable(case_config(case), exe)
+    with tempfile.TemporaryDirectory() as tmp:
+        (Path(tmp) / "gotm.yaml").write_text(dump_yaml(config) + "\n")
+        full = _write_full(exe, tmp)
+        if not full.exists():
+            raise RuntimeError(f"{exe} --write_yaml failed")
+        body = [l for l in full.read_text().splitlines() if not l.startswith("#")]
+    head = [f"# The course case '{case}' with every setting of GOTM (configuration version {config['version']}).",
+            "# The comment on each line gives the meaning of the setting, its units, the allowed",
+            "# values and GOTM's default.  Edit the values and run the file with",
+            f"#     efmgotm.run('{path.name}')",
+            "#"]
+    if config["version"] == case_config(case)["version"]:
+        rows = _case_choices(case)
+        width = max(len(f"{k}: {v}") for k, v, _ in rows)
+        head += ["# The course case sets the following; everything else is GOTM's default:", "#"]
+        head += [(f"#   {k}: {v}".ljust(width + 6) + f"  {c}").rstrip() for k, v, c in rows]
+        head += ["#"]
+    path.write_text("\n".join(head + body) + "\n")
+    return path
+
+
 def run(case, settings=None, name=None, workdir="runs", rerun=True, quiet=True,
         gotm=None, output_variables=None):
     """Run a case with modified settings and return its output.
 
     Parameters
     ----------
-    case : 'couette', 'lake' or 'estuary'
+    case : 'couette', 'lake', 'estuary', or the path of a .yaml file
+        A course case, or a configuration file of your own, for instance
+        one written by :func:`copy_case` and edited.
     settings : dict
         Changes to the base configuration, with dotted keys, for example
         ``{'surface.fluxes.tx.constant_value': 0.01, 'time.stop': '2005-01-03 00:00:00'}``.
-        Run ``efmgotm.case_config(case)`` to see the base configuration, or
-        read ``efmgotm/cases/<case>.yaml``.
+        Every setting is listed, with its meaning and default, in the file
+        ``gotm_full.yaml`` that each run leaves in its run directory, and in
+        the file that :func:`copy_case` writes.
     name : str
-        Name of the run; the run directory is ``<workdir>/<case>_<name>``.
+        Name of the run; the run directory is ``<workdir>/<case>_<name>``
+        (for a file, its name without ``.yaml`` takes the place of the case).
         Default: derived from the settings.
     workdir : str or Path
         Where run directories are created (relative to the current directory).
@@ -286,15 +444,16 @@ def run(case, settings=None, name=None, workdir="runs", rerun=True, quiet=True,
         name = "_".join(f"{k.split('.')[-2] if k.endswith('constant_value') else k.split('.')[-1]}={v}"
                         for k, v in settings.items()) or "default"
         name = name.replace(" ", "").replace("/", "")
-    rundir = Path(workdir) / f"{case}_{name}"
+    label = Path(case).stem if _is_file(case) else case
+    rundir = Path(workdir) / f"{label}_{name}"
     rundir.mkdir(parents=True, exist_ok=True)
     ncfile = rundir / f"{_output_name(config)}.nc"
     if not rerun and ncfile.exists():
         return load(ncfile)
     exe = gotm or find_gotm()
-    if config.get("version", 7) == 7 and config_version(exe) == 6:
-        config = to_version6(config)               # GOTM 6.0.x, as on conda-forge
+    config = for_executable(config, exe)       # GOTM built from source reads version 7
     (rundir / "gotm.yaml").write_text(dump_yaml(config) + "\n")
+    _write_full(exe, rundir)                   # every setting, with its meaning and default
     with open(rundir / "gotm.log", "w") as log:
         proc = subprocess.run([exe], cwd=rundir, stdout=log, stderr=subprocess.STDOUT)
     if proc.returncode != 0 or not ncfile.exists():
@@ -319,8 +478,8 @@ def load(ncfile):
     ``hours`` and ``days`` give the elapsed time.
     """
     ds = xr.open_dataset(ncfile).squeeze(drop=True)
-    if "rho" in ds and "rho_p" not in ds:          # GOTM 6.0.x names it rho
-        ds = ds.rename({"rho": "rho_p"})
+    if "rho_p" in ds and "rho" not in ds:          # GOTM 7 calls it rho_p
+        ds = ds.rename({"rho_p": "rho"})
     for c in ("z", "zi"):
         if c in ds.coords and "time" in ds[c].dims:
             first = ds[c].isel(time=0)

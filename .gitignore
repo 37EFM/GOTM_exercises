@@ -7,3 +7,5 @@ __pycache__/
 runs/
 notebooks/runs/
 *.nc
+# your own copies of the cases, written by efmgotm.copy_case
+my_*.yaml

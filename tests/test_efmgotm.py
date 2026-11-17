@@ -11,7 +11,7 @@ runmod = importlib.import_module("efmgotm.run")
 def test_case_configs_parse():
     for case in efmgotm.available_cases():
         cfg = efmgotm.case_config(case)
-        assert cfg["version"] == 7
+        assert cfg["version"] == 6                       # GOTM 6.0.x, as on conda-forge
         assert cfg["surface"]["fluxes"]["method"] == "off"     # not a boolean
 
 
@@ -70,18 +70,46 @@ def test_lake_cooling_mixes(gotm_available, tmp_path):
     assert float(mld[-1]) > float(mld[5]) > 0
 
 
-def test_to_version6_translation():
-    """The conda-forge GOTM 6.0.x reads configuration version 6."""
-    runmod = importlib.import_module("efmgotm.run")
-    c6 = runmod.to_version6(efmgotm.case_config("estuary"))
-    assert c6["version"] == 6
-    assert "equation_of_state" not in c6 and c6["eq_state"]["form"] == "linear_custom"
-    rho0, beta = 1027.0, 7.7e-4
-    assert c6["physical_constants"]["rho_0"] == rho0
-    assert np.isclose(c6["eq_state"]["linear"]["dsr0"], rho0 * beta)
-    ip = c6["mimic_3d"]["int_press"]
-    assert ip["dsdx"]["constant_value"] == -2.0e-4 and ip["s_adv"] is True
-    sources = [v["source"] for v in c6["output"]["estuary"]["variables"]]
-    assert "rho" in sources and "rho_p" not in sources and "idpdx" not in sources
+def test_version_translations():
+    """GOTM built from source reads configuration version 7; the cases are version 6."""
+    c6 = efmgotm.case_config("estuary")
+    c7 = runmod.to_version7(c6)
+    assert c7["version"] == 7
+    assert "eq_state" not in c7 and c7["equation_of_state"]["method"] == "linear_custom"
+    assert c7["equation_of_state"]["rho0"] == 1027.0 and "physical_constants" not in c7
+    assert np.isclose(c7["equation_of_state"]["linear"]["beta"], 7.7e-4)
+    assert np.isclose(c7["equation_of_state"]["linear"]["alpha"], 1.7e-4)
+    ip = c7["mimic_3d"]["int_pressure"]
+    assert ip["type"] == "gradients" and ip["gradients"]["dsdx"]["constant_value"] == -2.0e-4
+    assert ip["s_adv"] is True
+    sources = [v["source"] for v in c7["output"]["estuary"]["variables"]]
+    assert "rho_p" in sources and "rho" not in sources
+    # and back
+    back = runmod.to_version6(c7)
+    assert back["eq_state"]["linear"]["dsr0"] == pytest.approx(0.79079)
+    assert back["mimic_3d"]["int_press"]["dsdx"] == c6["mimic_3d"]["int_press"]["dsdx"]
+    assert back["physical_constants"] == c6["physical_constants"]
     # the original is untouched
-    assert "equation_of_state" in efmgotm.case_config("estuary")
+    assert "eq_state" in efmgotm.case_config("estuary")
+
+
+def test_case_choices_listed():
+    rows = dict((k, v) for k, v, _ in runmod._case_choices("lake"))
+    assert rows["surface.fluxes.heat.constant_value"] == "-5.0"
+    assert rows["temperature.two_layer.t_s"] == "20.0"
+    assert not any(k.startswith("output") for k in rows)
+
+
+def test_copy_case_and_run_file(gotm_available, tmp_path):
+    path = efmgotm.copy_case("lake", tmp_path / "my_lake.yaml")
+    text = path.read_text()
+    assert "default=" in text
+    if runmod.config_version(efmgotm.find_gotm()) == 6:          # the version the cases are written in
+        assert "#   surface.fluxes.heat.constant_value: -5.0" in text
+    with pytest.raises(FileExistsError):
+        efmgotm.copy_case("lake", path)
+    cfg = efmgotm.case_config(path)
+    assert cfg["surface"]["fluxes"]["heat"]["constant_value"] == -5.0
+    ds = efmgotm.run(path, {"time.stop": "2005-01-01 12:00:00"}, name="test", workdir=tmp_path)
+    rundir = tmp_path / "my_lake_test"
+    assert (rundir / "gotm_full.yaml").exists() and "rho" in ds
