@@ -458,6 +458,12 @@ def run(case, settings=None, name=None, workdir="runs", rerun=True, quiet=True,
         proc = subprocess.run([exe], cwd=rundir, stdout=log, stderr=subprocess.STDOUT)
     if proc.returncode != 0 or not ncfile.exists():
         tail = (rundir / "gotm.log").read_text().splitlines()[-15:]
+        if proc.returncode in (0xC0000135, -0x3FFFFECB):     # Windows: STATUS_DLL_NOT_FOUND
+            tail.append("Windows could not load a library that gotm.exe needs, usually the netCDF one.\n"
+                        "In the Anaconda Prompt, run\n"
+                        "    conda activate efmgotm\n"
+                        '    conda install -c conda-forge "netcdf-fortran<4.6.3"\n'
+                        "and restart the notebook kernel.")
         raise RuntimeError(f"GOTM failed in {rundir} (exit code {proc.returncode}):\n" + "\n".join(tail))
     if not quiet:
         print((rundir / "gotm.log").read_text())

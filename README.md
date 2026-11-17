@@ -38,6 +38,16 @@ environment. Start JupyterLab from that environment: if the terminal
 prompt does not begin with `(efmgotm)`, the notebooks cannot find the
 package.
 
+If a run fails on Windows with exit code 3221225781, Windows could not
+load a library of `gotm.exe`. An environment created before 17 November
+2026 can have a netCDF-Fortran library under a name that GOTM does not
+look for; fix it in the Anaconda Prompt with
+
+```
+conda activate efmgotm
+conda install -c conda-forge "netcdf-fortran<4.6.3"
+```
+
 ## How a run works
 
 ```python

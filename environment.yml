@@ -7,6 +7,8 @@ dependencies:
   - python>=3.10
   - gotm=6.0             # the model itself, prebuilt for Windows, Linux and macOS; pinned so that
                          # everyone runs the same version (GOTM 7 changes default constants)
+  - netcdf-fortran<4.6.3  # from 4.6.3 its Windows library is called netcdff.dll, but the gotm.exe
+                         # of the conda package looks for libnetcdff.dll and does not start
   - numpy
   - scipy
   - matplotlib
