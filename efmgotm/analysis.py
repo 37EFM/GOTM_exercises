@@ -44,19 +44,24 @@ def convective_depth_unstratified(t, Q, H, alpha=2.6e-4, rho0=1000.0, cp=4150.0)
     return convective_velocity(Q, H, alpha, rho0, cp) * np.asarray(t, float)
 
 
-def convective_depth_stratified(t, Q, N2, alpha=2.6e-4, rho0=1000.0, cp=4150.0, factor=6.0):
+def convective_depth_stratified(t, Q, N2, alpha=2.6e-4, rho0=1000.0, cp=4150.0, A=0.2, factor=None):
     """Convective layer depth in a linearly stratified lake,
 
-        h = sqrt(factor * alpha g |Q| t / (rho0 cp N^2)).
+        h = sqrt(factor * alpha g |Q| t / (rho0 cp N^2)),  factor = 2 (1 + 2A).
 
-    ``factor = 6`` is the result of Cushman-Roisin (Environmental Fluid
-    Mechanics, Section 7.4), who assumes that the potential energy of the
-    water column is unchanged by the convection; the mixed layer is then
-    colder than the water at its base by one third of Gamma h, the "knee"
-    of Deardorff's experiments.  Pure encroachment, in which the mixed
-    layer simply takes the temperature of the water at its base, gives
-    ``factor = 2``.
+    ``A`` is the entrainment ratio: the heat flux through the base of the
+    convective layer, carried by the water it entrains, as a fraction of the
+    surface flux (Section 11.5 of the lecture notes).  Measurements and
+    simulations give ``A = 0.2``, hence ``factor = 2.8``, the default.
+    ``A = 0`` is encroachment, ``factor = 2``: the cooled layer simply takes
+    the temperature of the water at its base.  ``A = 1``, ``factor = 6``, is
+    the result of Cushman-Roisin (Environmental Fluid Mechanics, Section 7.4),
+    who assumes that the potential energy of the water column is unchanged by
+    the convection; it overestimates the entrainment.  ``factor``, if given,
+    overrides ``A``.
     """
+    if factor is None:
+        factor = 2.0 * (1.0 + 2.0 * A)
     return np.sqrt(factor * alpha * g * abs(Q) * np.asarray(t, float) / (rho0 * cp * N2))
 
 
